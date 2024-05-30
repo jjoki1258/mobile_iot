@@ -10,31 +10,39 @@ NS_LOG_COMPONENT_DEFINE("MobileIoTNetworkSimulation");
 
 int main(int argc, char* argv[])
 {
-    uint32_t N = 100; // ¸ğ¹ÙÀÏ ±â±â ¼ö
-    uint32_t K = 4;   // ±â±â ´ç ÀÛ¾÷ ¼ö
-    double serverCpu = 100.0; // GHz, ¼­¹ö CPU
+    uint32_t N = 100; // ëª¨ë°”ì¼ ê¸°ê¸° ìˆ˜
+    uint32_t K = 4;   // ê¸°ê¸° ë‹¹ ì‘ì—… ìˆ˜
+    double serverCpu = 100.0; // GHz, ì„œë²„ CPU
 
     CommandLine cmd;
     cmd.Parse(argc, argv);
 
-    // ³ëµå »ı¼º
+    // ë…¸ë“œ ìƒì„±
     NodeContainer mobileDevices;
     mobileDevices.Create(N);
     NodeContainer server;
     server.Create(1);
 
-    // ÀÎÅÍ³İ ½ºÅÃ
+    // ì¸í„°ë„· ìŠ¤íƒ
     InternetStackHelper stack;
     stack.Install(mobileDevices);
     stack.Install(server);
 
-    // IP ÁÖ¼Ò ÇÒ´ç
+    // IP ì£¼ì†Œ í• ë‹¹
     Ipv4AddressHelper address;
     address.SetBase("10.1.1.0", "255.255.255.0");
     Ipv4InterfaceContainer interfaces = address.Assign(mobileDevices);
     Ipv4InterfaceContainer serverInterface = address.Assign(server);
+    
+    // Communication Model
+    PointToPointHelper pointToPoint;
+    pointToPoint.SetDeviceAttribute("DataRate", StringValue("100Mbps"));
+    pointToPoint.SetChannelAttribute("Delay", StringValue("2ms"));
 
-    // ÀÌµ¿¼º ¼³Á¤
+    NetDeviceContainer devices;
+    devices = pointToPoint.Install(mobileDevices.Get(0), server.Get(0)); // Example for one device
+    
+    // ì´ë™ì„± ì„¤ì •
     MobilityHelper mobility;
     mobility.SetPositionAllocator("ns3::RandomDiscPositionAllocator",
         "X", StringValue("100.0"),
@@ -47,7 +55,39 @@ int main(int argc, char* argv[])
         "Bounds", RectangleValue(Rectangle(-100, 100, -100, 100)));
     mobility.Install(mobileDevices);
 
-    // °è»ê ÀÛ¾÷ ¼³Á¤
+    // Energy Model
+    BasicEnergySourceHelper basicSourceHelper;
+    basicSourceHelper.Set("BasicEnergySourceInitialEnergyJ", DoubleValue(10.0));
+    EnergySourceContainer sources = basicSourceHelper.Install(mobileDevices);
+
+    DeviceEnergyModelHelper deviceEnergyHelper;
+    deviceEnergyHelper.Set("CpuIdlePowerW", DoubleValue(0.1));
+    for (uint32_t i = 0; i < mobileDevices.GetN(); ++i) {
+    deviceEnergyHelper.Install(devices.Get(i), sources.Get(i));
+    }
+
+    // Task Decision Logic
+    for (uint32_t i = 0; i < N; ++i) {
+    Ptr<Node> device = mobileDevices.Get(i);
+    double localEnergy = sources.Get(i)->GetRemainingEnergy();
+    double remoteLatency = pointToPoint.GetChannel()->GetDelay().GetSeconds();
+
+        for (uint32_t j = 0; j < K; ++j) {
+        double dataSize = dataSizeVar->GetValue();
+        double cpuPower = cpuPowerVar->GetValue();
+
+        // Simple decision logic: if local energy is enough and latency is high, compute locally
+        if (localEnergy > 0.5 && remoteLatency > 0.01) {
+            // Execute locally
+            NS_LOG_INFO("Device " << i << ", Task " << j << " executes locally.");
+        } else {
+            // Execute remotely
+            NS_LOG_INFO("Device " << i << ", Task " << j << " executes remotely.");
+            }
+        }
+    }
+
+    // ê³„ì‚° ì‘ì—… ì„¤ì •
     for (uint32_t i = 0; i < N; ++i)
     {
         for (uint32_t j = 0; j < K; ++j)
@@ -63,11 +103,13 @@ int main(int argc, char* argv[])
             double dataSize = dataSizeVar->GetValue();
             double cpuPower = cpuPowerVar->GetValue();
 
-            NS_LOG_INFO("±â±â " << i << ", ÀÛ¾÷ " << j << ": µ¥ÀÌÅÍ Å©±â = " << dataSize << " MB, CPU = " << cpuPower << " GHz");
+            NS_LOG_INFO("ê¸°ê¸° " << i << ", ì‘ì—… " << j << ": ë°ì´í„° í¬ê¸° = " << dataSize << " MB, CPU = " << cpuPower << " GHz");
         }
     }
 
-    // ¿©±â¿¡ ¿¡³ÊÁö ¸ğµ¨ ¼³Á¤ Ãß°¡ °¡´É
+    
+
+    // ì—¬ê¸°ì— ì—ë„ˆì§€ ëª¨ë¸ ì„¤ì • ì¶”ê°€ ê°€ëŠ¥
 
     Simulator::Run();
     Simulator::Destroy();
